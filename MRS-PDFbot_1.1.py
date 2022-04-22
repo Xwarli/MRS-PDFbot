@@ -268,7 +268,7 @@ while True:
             # Only accept the wated filetype files, in case any others have crept in!
             if item.endswith(filetype):
                 exists = True
-                ia_file = str(item).lstrip(str(mypath))
+                ia_file = item.replace(mypath +"/", "")
                 # ia_file is the path to file needed for the uploader
                 # Title simply removes underscores and extention for easy readability
                 # Identifier is generated from the file name, just removing the extension and disallowed characters per def
@@ -301,8 +301,8 @@ while True:
 
         if confirm_uploads == "N":
             # calls the ia upload file, referencing the csv
-            print('\n\nia upload --spreadsheet="ia_upload.csv" --sleep=1') # printed for user feedback
-            os.system('ia upload --spreadsheet="ia_upload.csv" --sleep=1')
+            print('\n\nia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10') # printed for user feedback
+            os.system('ia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10')
         else:
             print("File upload to ia skipped")
 
@@ -332,16 +332,19 @@ while True:
             
             ia_file = open("ia_upload.csv", "r")
             ia_file_list = []
-            moved_count = 0
+            moved_count, delete_count = 0, 0
+            
             for line in ia_file:
                 if skipped_header is True:
                     ia_file_list = line.split(",")
-                    ia_file_to_move = ia_file_list[-1].strip("\n").strip(" ")
                     try:
-                        shutil.move(ia_file_to_move, mypath + "/uploaded_PDFs/")
-                        moved_count += 1 
-                    except:
-                        pass
+                        # Tries to move a file to the new directory. If it can't (probably because
+                        #       it already exists, then simply deletes it when it throws an error.
+                        shutil.move(multi_str_strip(ia_file_list[-1]), "./uploaded_PDFs/")
+                        moved_count += 1
+                    except:     # Quick fix for a broad range of possible errors..
+                        os.remove(multi_str_strip(ia_file_list[-1]))
+                        delete_count += 1
                     else:
                         pass
                 else:
@@ -350,15 +353,16 @@ while True:
                     #   when the file column returns "file" and not a file path!
                     skipped_header = True       
 
-
             # Deletes empty folders
             drop_empty_folders(mypath)
-            
+
+            # User feedback
             print("---> !! File move complete. Files moved: " + str(moved_count))
+            print("---> !! File deletion complete. Files deleted: " + str(delete_count))
             print("---> !! Empty files deleted")
                   
         elif clean_up == "N":
-            print("---> No post-archiving clean up performed.")
+            print("---> No post-archiving clean up performed.\n")
         else:
             print("\n---> !! CLEAN-UP MODULE ERROR !!")
 
@@ -377,7 +381,7 @@ while True:
 #   TO DO: Exclude early links!
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
-
+   
     mypath = os.getcwd()
     log_count, url_total = 0, 0
     more_logs, first_overwrite = True, True
@@ -432,10 +436,3 @@ while True:
         log_count += 1
 
     # At this point, the file starts again with the new url list!
-
-        
-    
-
-
-
-
