@@ -86,7 +86,10 @@ def drop_empty_folders(directory):
     """Verify that every empty folder removed in local storage."""
     for dirpath, dirnames, filenames in os.walk(directory, topdown=False):
         if not dirnames and not filenames:
-            os.rmdir(dirpath)
+            try:
+                os.rmdir(dirpath)
+            except:
+                pass
 
 def identifier_formatting(identifier):
         # Remove non-alphanumeric characters
@@ -136,7 +139,7 @@ while True:
 # ------------------------------------------------------------------------------
 # Parses the config file (if it does not exist, sets defults inline)
 # ------------------------------------------------------------------------------
-    mypath = os.chmod
+    mypath = os.getcwd()
     url_list = []
     defaulted = False
     if os.path.exists("MRS-PDFbot.config") is True:
@@ -278,7 +281,7 @@ while True:
                 if ia_file == ".pdf":
                     exists = False
             
-                if exists is True:
+                if os.path.exists(item) is True:
                     title = item.split("/")[-1].replace("_", " ").replace(".pdf", "").replace("-", " ") 
                     
                     identifier = identifier_formatting(item.split("/")[-1].replace(".pdf", ""))
@@ -342,9 +345,18 @@ while True:
                         #       it already exists, then simply deletes it when it throws an error.
                         shutil.move(multi_str_strip(ia_file_list[-1]), "./uploaded_PDFs/")
                         moved_count += 1
+                    except FileNotFoundError:
+                        try:
+                            os.remove(multi_str_strip(ia_file_list[-1]))
+                            delete_count += 1
+                        except:
+                            pass
                     except:     # Quick fix for a broad range of possible errors..
-                        os.remove(multi_str_strip(ia_file_list[-1]))
-                        delete_count += 1
+                        try:
+                            os.remove(multi_str_strip(ia_file_list[-1]))
+                            delete_count += 1
+                        except:
+                            pass
                     else:
                         pass
                 else:
