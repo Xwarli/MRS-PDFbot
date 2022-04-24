@@ -6,6 +6,8 @@ import random
 
 # Used to provide basic feedback after loading settings from a config file
 def loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, filetype_upper, mediatype, uploaded_pdfs_folder):
+
+        three_line_break()
         
         if defaulted is True:
             print("!! Using default values (config file not found or has errors!) \n")
@@ -29,6 +31,8 @@ def loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filety
             print("Not confirming uploads")
         else:
             pass
+
+        three_line_break()
                 
 
 # https://stackoverflow.com/a/23488980
@@ -63,17 +67,17 @@ def remove_empty_dirs(path):
 ##    
 ##    return quota
         
-def four_line_break():
-    print("------------------------------------------------------------------------------\n"*4)
+def three_line_break():
+    print("------------------------------------------------------------------------------\n"*3)
         
 
 def multi_str_strip(string):
     return string.strip(' ,"').strip("'").strip("\n")
 
 def no_config_defaults():
-    print("No configuration file found. Defaulting...")
-    confirm_uploads = "N"
-    clean_up = "Y"
+    print("[!?  Warning  ?!] No configuration file found. Defaulting...")
+    confirm_uploads = "y"
+    clean_up = "n"
     contributor = '"Marley R. Sexton, MRS.PDFbot"'
     quotastring = "2m"
     startpage = "https://www.rspb.org.uk/"
@@ -131,15 +135,62 @@ def fix_pdf(ia_file):
     finally:
         return ia_file
     
+# Some basic checks to see if the URL in the list are (possibly) valid. wget rejects invalid URLs without crashing
+#   the program, so not strictly neccesary but does save some time.
+def check_url_list(url_list, valid=True, feedback=True):
+
+    legal_url_chars = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=")
+    reserved_url_chars = list(":/#?&@%+~")
+    checked_list = []
     
+    if bool(url_list) is False:             # i.e. if it isn't a list at all
+        valid = False
+        url_list = []
+    else:
+        for entry in url_list:
+            valid = True
+            for character in list(entry):
+                if character not in legal_url_chars:
+                    if character in reserved_url_chars:
+                        print("[!?  Warning  ?!] Possible reservec characters in input URL: " + entry)
+                    elif character not in reserved_url_chars:
+                        print("[!! Rejecting !!] Illegal characters in input URL: " + entry)
+                        valid = False
+                    else:
+                        print("[!?  Warning  ?!] check_url_list error (unable to validate): " + entry)
+                elif character in legal_url_chars:
+                    pass
+                else:
+                     print("[!?  Warning  ?!] check_url_list error (unable to validate): " + entry)
+            if valid is False:
+                pass
+            else:
+                checked_list.append(entry)
+                if feedback is True:
+                    print("[--  -------  --] URL accepted: " + entry)
+
+
+
+    return url_list, valid
+                    
+        
+
+
+
+# Initialize vars
+total_moved, total_delete = 0, 0
 
 # Infinite loop!          
 while True:
+# ------------------------------------------------------------------------------
+# Find the relative path (directory this script is is)
+# ------------------------------------------------------------------------------
+    mypath = os.getcwd()
 
 # ------------------------------------------------------------------------------
 # Parses the config file (if it does not exist, sets defults inline)
 # ------------------------------------------------------------------------------
-    mypath = os.getcwd()
+    
     url_list = []
     defaulted = False
     if os.path.exists("MRS-PDFbot.config") is True:
@@ -150,97 +201,109 @@ while True:
             else:
                 
                 config_line = line.split("=")
-                key_name = config_line[0].lower()
+                key_name, key_value = config_line[0].lower(), config_line[-1].lower()
+                #   (in config file:)   key_name    =   key_value 
 
                 if key_name.startswith("startpage"):
-                    single_url = multi_str_strip(config_line[-1])
+                    single_url = multi_str_strip(key_value)
                     if single_url != "":
                         url_list.append(single_url)
 
                 elif key_name.startswith("url_list"):
-                    url_file = multi_str_strip(config_line[-1])
+                    url_file = multi_str_strip(key_value)
                     try:
                         url_file = open(url_file, "r")
                         for line in url_file:
                             url_list.append(multi_str_strip(line))
                         url_file.close()
                     except:
-                        print("URL File invalid. Defaulting")
+                        print("[!!   Error   !!] URL File invalid. Defaulting")
                     
                 elif key_name.startswith("quotastring"):
-                    #quotastring = check_quota_format(multi_str_strip(config_line[-1]).lower())
-                    quotastring = multi_str_strip(config_line[-1]).lower()                 
+                    #quotastring = check_quota_format(multi_str_strip(key_value).lower())
+                    quotastring = multi_str_strip(key_value).lower()                 
                    
                 elif key_name.startswith("contributor"):
-                    contributor = multi_str_strip(config_line[-1])
-                    if contributor.startswith('"') is False:
-                        contributor = '"' + contributor
-                    if contributor.endswith('"') is False:
-                        contributor = contributor + '"'                
+                    contributor = multi_str_strip(key_value)
+                    if contributor.startswith('"') is False:                    # Ensures whole string is within quotes since
+                        contributor = '"' + contributor                         #   comma seperated values cause issues later and
+                    if contributor.endswith('"') is False:                      #   when trying to upload - since archive thinks
+                        contributor = contributor + '"'                         #   the commas are seperating imputs
                     
                 elif key_name.startswith("confirm_uploads"):
-                    confirm_uploads = (multi_str_strip(config_line[-1]).upper())[0]  # First char only (i.e. Y in Yes, N in No)
-                    
-                    if confirm_uploads not in "YN":
-                        print("!! Confirming uploads line error. Defaulting to True (Y)")
-                        confirm_uploads = "Y" 
+                    confirm_uploads = (multi_str_strip(key_value))[0]           # First char only (i.e. y in Yes, n in No)
+                    if confirm_uploads not in "yn":                            # If not y or n, just default to y 
+                        print("[!!   Error   !!] Confirming uploads line error. Defaulting to True (Y)")
+                        confirm_uploads = "y"  
                         
-                elif key_name.startswith("clean_up"):
-                    clean_up = (multi_str_strip(config_line[-1]).upper())[0]
-                    if clean_up not in "YN":
-                        print("!! Confirming clean upline error. Defaulting to True (Y)")
-                        clean_up = "Y"
+                elif key_name.startswith("clean_up"):       
+                    clean_up = (multi_str_strip(key_value))[0]                  # First char only (i.e. y in Yes, n in No)
+                    if clean_up not in "yn":                                    # If not y or n, just default to n
+                        print("[!!   Error   !!] Confirming clean upline error. Defaulting to True (Y)")
+                        clean_up = "n"
                     
                 elif key_name.startswith("uploaded_pdfs_folder"):
-                    uploaded_pdfs_folder = '"' + multi_str_strip(config_line[-1]) + '"'
+                    uploaded_pdfs_folder = '"' + multi_str_strip(key_value) + '"'
                     
 
                 elif key_name.startswith("filetype "):
-                    filetype  = ("." + multi_str_strip(config_line[-1]).strip(".")).lower()
+                    filetype  = ("." + multi_str_strip(key_value).strip(".")).lower()
                     filetype_upper = " " + filetype.upper()     # file extension in both lower and upper case covers most examples
                     
 
                 elif key_name.startswith("mediatype"):
-                    mediatype = multi_str_strip(config_line[-1])
-                    
-
-
-
-        
-
-
+                    mediatype = multi_str_strip(key_value)
 
         config_file.close()
 
-    # If there is no config file, sets the defults as in the subroutine.
-    elif os.path.exists("MRS-PDFbot.config") is False:
+    # If there is no config file, or default flag is set, sets the defults as in the subroutine.
+    elif os.path.exists("MRS-PDFbot.config") is False or  defaulted is True:
         confirm_uploads, clean_up, contributor, quotastring, startpage, uploaded_pdfs_folder, defaulted = no_config_defaults()
 
     # User feedback, seperated into subroutine for readability      
-    four_line_break()
     loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, filetype_upper, mediatype, uploaded_pdfs_folder)
-    four_line_break()
+
+    # ------------------------------------------------------------------------------
+    # URL checking.
+    #   Runs some basic checks on input URLs and get user input if none found.
+    #   get_url is flagged as false, and once a URL of suitable quality is entered
+    #   it is flagged as true and allows the program to continue.
+    # ------------------------------------------------------------------------------
+
+
+    url_list, valid_check = check_url_list(url_list)
+    get_url = False
+    while get_url is False:
+        if len(url_list) == 0 or valid_check is False:
+            url_list = []                                                   # Overwrites
+            url_list.append(input("No valid URL provided. Enter URL: "))    # Catches input and adds to list
+            url_list, valid_check = check_url_list(url_list)                # Recheckes list
+            if len(url_list) != 0 and valid_check is True:                  # Double check (valid_check is really only needed)
+                get_url is True                                             # If acceptable, switches flag and allows escape
+            else:                                       
+                print("[!!   Error   !!] Error with entry. Please try again.")                # Else feedsback and sends the loop around again.
+        else:
+            break                                                           # Allows escape if something strange happens
         
     # ------------------------------------------------------------------------------
     # Create wget string from variables, before printing (in case of errors) and
     #   then run via os
     # ------------------------------------------------------------------------------
-    
     for url in url_list:
         
         # https://unix.stackexchange.com/a/128476
         wget_command = "wget " + url + " -r -l --level=inf -p -A " + filetype + " -H -nc -nv --user-agent=\"\" -e --robots=off --restrict-file-names=ascii --quota=" + quotastring + " --wait=1 --random-wait --tries=2 --timeout=10 2>&1 | tee -a wget-log"
-        print(wget_command + "\n\n")
+        print("\n[--  -------  --] " + wget_command + "\n")
         os.system(wget_command)
 
-        # ------------------------------------------------------------------------------
-        # Find the relative path (directory this script is is)
-        # ------------------------------------------------------------------------------
-        mypath = os.getcwd()
 
-        # ------------------------------------------------------------------------------
-        # CREATING FILE FOR BULK UPLOAD TO ARCHIVE.ORG VIA ia upload COMMAND
-        # ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# CREATING FILE FOR BULK UPLOAD TO ARCHIVE.ORG VIA ia upload COMMAND
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
         # Create empty csv file to create metadata and file list. Deletes any existing
         #   file to overwrite
@@ -302,12 +365,20 @@ while True:
         #   bulk uploads. Inter-upload sleep set from default (30sc) to 0sc.
         # ------------------------------------------------------------------------------
 
-        if confirm_uploads == "N":
+        if confirm_uploads == "n":
             # calls the ia upload file, referencing the csv
-            print('\n\nia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10') # printed for user feedback
-            os.system('ia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10')
+            ia_upload_command = '[--  -------  --] ia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10'
+            print('\n\n' + ia_upload_command) # printed for user feedback
+            os.system(ia_upload_command)
+        elif confirm_uploads != "n":
+            if input("[--   Input   --] Upload to IA? [Y/N]: ").lower()[0] == "y":
+                print('\n\n' + ia_upload_command) # printed for user feedback
+                os.system(ia_upload_command)
+            else:
+                print("[!?  Warning  ?!] File upload to ia skipped")
         else:
-            print("File upload to ia skipped")
+            print("[!?  Warning  ?!] File upload to ia skipped")
+
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -322,16 +393,17 @@ while True:
 # ------------------------------------------------------------------------------
 
         skipped_header = False
-        if clean_up == "Y":
-            print("\n---> Moving PDFs to seperate file for personal archiving.")
-            
+        if clean_up == "y":
+            print("\n[--  -------  --] Moving PDFs to seperate file for personal archiving.")
+
+            # Sees if a file already exists, otherwise tries to create on in the script directory
             if os.path.isdir("uploaded_PDFs") is False:
                 try:
                     os.mkdir("uploaded_PDFs")
                 except:
                     pass
                 finally:
-                    print("Created directory at /uploaded_PDFs")
+                    print("[--  -------  --] Created directory at /uploaded_PDFs")
             
             ia_file = open("ia_upload.csv", "r")
             ia_file_list = []
@@ -339,21 +411,22 @@ while True:
             
             for line in ia_file:
                 if skipped_header is True:
-                    ia_file_list = line.split(",")
+                    ia_filename = multi_str_strip(line.split(",")[-1])
                     try:
                         # Tries to move a file to the new directory. If it can't (probably because
                         #       it already exists, then simply deletes it when it throws an error.
-                        shutil.move(multi_str_strip(ia_file_list[-1]), "./uploaded_PDFs/")
+                        shutil.move(ia_filename, "./uploaded_PDFs/")
                         moved_count += 1
                     except FileNotFoundError:
                         try:
-                            os.remove(multi_str_strip(ia_file_list[-1]))
+                            print("[!!   Error   !!] FileNotFoundError in Cleanup Process: " + ia_filename)
+                            os.remove(ia_filename)
                             delete_count += 1
                         except:
                             pass
                     except:     # Quick fix for a broad range of possible errors..
                         try:
-                            os.remove(multi_str_strip(ia_file_list[-1]))
+                            os.remove(ia_filename)
                             delete_count += 1
                         except:
                             pass
@@ -369,15 +442,25 @@ while True:
             drop_empty_folders(mypath)
 
             # User feedback
-            print("---> !! File move complete. Files moved: " + str(moved_count))
-            print("---> !! File deletion complete. Files deleted: " + str(delete_count))
-            print("---> !! Empty files deleted")
+            total_moved += moved_count
+            total_delete += delete_count
+            print("[--  -------  --] File move complete. Files moved: " + str(moved_count) + "    [Running Total: " + str(total_moved) + "]")
+            print("[--  -------  --] File deletion complete. Files deleted: " + str(delete_count) + "    [Running Total: " + str(total_delete) + "]")
+            print("[--  -------  --] Empty files deleted")
                   
-        elif clean_up == "N":
-            print("---> No post-archiving clean up performed.\n")
+        elif clean_up == "n":
+            print("[!?  Warning  ?!] No post-archiving clean up performed.\n")
         else:
-            print("\n---> !! CLEAN-UP MODULE ERROR !!")
+            print("\n[!!   Error   !!] Cleaning up error. !!")
 
+        ia_file.close()                 # Finishes cleaning up by closing the csv file and then deleting it
+        try:
+            os.rmdir(ia_upload.csv)         # (same command occurs earlier in an 'if', but it here makes certain it's gone)
+        except NameError:                   # essentially "it already exists (as predicted)
+            pass
+        except:                             # any other error that might occur unexpectedly
+            print("[!?  Warning  ?!] Possible error deleting ia_upload.csv).")
+            pass
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # CREATES A NEW URL LIST FROM PREVIOUSLY CHECKED URLS LISTED IN THE LOGFILES
@@ -394,9 +477,10 @@ while True:
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
    
-    mypath = os.getcwd()
+   
     log_count, url_total = 0, 0
     more_logs, first_overwrite = True, True
+    
     while more_logs is True:
         log_file_name = "wget-log"  # Normal log file name. Might be different if wget above edited
         if log_count > 0:
@@ -405,7 +489,7 @@ while True:
             pass
 
         if os.path.exists(mypath + "/" + log_file_name) is True:    # checks file exists in current directory
-            print("--> Reading " + log_file_name )                  # user feedback
+            print("[!?  Warning  ?!] Reading " + log_file_name )                  # user feedback
             log_file = open(log_file_name).read()                   # opens and reads logfile to log_file str       
            # log_file = log_file.read()
             # https://stackoverflow.com/a/50790119
@@ -448,3 +532,10 @@ while True:
         log_count += 1
 
     # At this point, the file starts again with the new url list!
+
+        
+    
+
+
+
+
