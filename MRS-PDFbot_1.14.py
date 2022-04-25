@@ -224,7 +224,7 @@ while True:
                     quotastring = multi_str_strip(key_value).lower()                 
                    
                 elif key_name.startswith("contributor"):
-                    contributor = multi_str_strip(key_value)
+                    contributor = multi_str_strip(key_value).title().replace("Mrs.Pdfbot", "MRS.PDFbot")
                     if contributor.startswith('"') is False:                    # Ensures whole string is within quotes since
                         contributor = '"' + contributor                         #   comma seperated values cause issues later and
                     if contributor.endswith('"') is False:                      #   when trying to upload - since archive thinks
@@ -367,12 +367,12 @@ while True:
 
         if confirm_uploads == "n":
             # calls the ia upload file, referencing the csv
-            ia_upload_command = '[--  -------  --] ia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10'
+            ia_upload_command = 'ia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10'
             print('\n\n' + ia_upload_command) # printed for user feedback
             os.system(ia_upload_command)
         elif confirm_uploads != "n":
             if input("[--   Input   --] Upload to IA? [Y/N]: ").lower()[0] == "y":
-                print('\n\n' + ia_upload_command) # printed for user feedback
+                print('\n\n[--  -------  --]' + ia_upload_command) # printed for user feedback
                 os.system(ia_upload_command)
             else:
                 print("[!?  Warning  ?!] File upload to ia skipped")
