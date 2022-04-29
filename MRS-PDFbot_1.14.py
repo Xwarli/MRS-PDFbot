@@ -3,9 +3,17 @@ import shutil
 import re
 import random
 
+## wget https://gnuwget.gitlab.io/wget2/wget2-latest.tar.gz
+##	tar xf wget2-latest.tar.gz
+##	cd wget2-*
+##	./configure
+##	make
+##	make check
+##	sudo make install
+
 
 # Used to provide basic feedback after loading settings from a config file
-def loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, filetype_upper, mediatype, uploaded_pdfs_folder):
+def loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, filetype_upper, mediatype, write_record, upload_record_txtfile, uploaded_pdfs_folder, wget2, user_agent):
 
         three_line_break()
         
@@ -16,6 +24,7 @@ def loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filety
         print("Contributor(s): " + contributor)
         print("Filetype to find: " + filetype + filetype_upper)
         print("Archive.org mediatype: " + mediatype )
+        print("Wget user-agent: " + user_agent)
         print("Uploaded PDF Folder: " + uploaded_pdfs_folder)
 
         if clean_up == "Y":
@@ -32,40 +41,23 @@ def loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filety
         else:
             pass
 
-        three_line_break()
-                
+        if write_record is True:
+            print("Writing local upload record to: " + upload_record_txtfile)
+        else:
+            print("Not writing local upload record")
+
+        if wget2 is True:
+            print("Using wget2 protocol")
+        else:
+            print("UNot using wget2 protocol (using wget)")
+  
+        three_line_break()               
 
 # https://stackoverflow.com/a/23488980
 def remove_empty_dirs(path):
     for root, dirnames, filenames in os.walk(path, topdown=False):
         for dirname in dirnames:
             remove_empty_dir(os.path.realpath(os.path.join(root, dirname)))
-
-##def check_quota_format(quota, default=False):
-##    # Basic way to check the quota format is correct.
-##    #   Just checks it starts with a number, and ends with k, b or m.
-##    #   and also whether other characters are in - a basic check only
-##    numstring = "1234567890"
-##    quota = multi_str_strip(quota)
-##    if quota[0] in numstring:
-##        default = True
-##    elif quota[-1] in numstring:
-##        default = True
-##    else:
-##        size = "bkm"
-##        # should_notbe = "acdefghijlnopqrstuvwxyz,./;'\[]<>?:\\!@£$%^&*()_+-=~`±§\"||{}"
-##        if quota[-1] not in size:
-##            default = True
-##
-##    if default is True:
-##        print("Quota value ERROR: defaulting to 10m")
-##        quota = "1m"
-##    elif default is False:
-##        pass
-##    else:
-##        pass
-##    
-##    return quota
         
 def three_line_break():
     print("------------------------------------------------------------------------------\n"*3)
@@ -82,14 +74,26 @@ def no_config_defaults():
     quotastring = "2m"
     startpage = "https://www.rspb.org.uk/"
     uploaded_pdfs_folder = "uploaded_PDFs"
+    wget2 = False
     defaulted = True
-    return confirm_uploads, clean_up, contributor, quotastring, startpage, uploaded_pdfs_folder, defaulted
+    write_record = False
+    user_agent = ""
+    return confirm_uploads, clean_up, contributor, quotastring, startpage, write_record, uploaded_pdfs_folder, wget2, user_agent, defaulted
 
-def drop_empty_folders(directory):
-    #https://stackoverflow.com/a/61925392
-    """Verify that every empty folder removed in local storage."""
+def drop_empty_folders(directory):  
+    # first, work topdown to delete needless files (generally tmp and html)
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for file in filenames:
+            if file.endswith(".html") is True or file.endswith(".tmp") is True:
+                try:
+                    os.remove(os.path.join(dirpath, file))
+                except:
+                    pass
+
+    # https://stackoverflow.com/a/61925392
+    # Then work backwards to delete empty folders
     for dirpath, dirnames, filenames in os.walk(directory, topdown=False):
-        if not dirnames and not filenames:
+      if not dirnames and not filenames:
             try:
                 os.rmdir(dirpath)
             except:
@@ -124,7 +128,7 @@ def identifier_formatting(identifier):
 # Used PDFtk to try and preemtivly fix PDFs with syntax errors as sujested by IA
 def fix_pdf(ia_file):
     new_ia_file = ia_file.rstrip(".pdf") + "-tmp.pdf"
-    pdftk_command = 'pdftk "' + ia_file + '" output "' + new_ia_file + '" flatten drop_xfa compress verbose dont_ask'
+    pdftk_command = 'pdftk "' + ia_file + '" output "' + new_ia_file + '" flatten drop_xfa compress dont_ask'
     try:
         print(pdftk_command)
         os.system(pdftk_command)            # Runs the PDFtk command and outputs to file-tmp.pdf (input != output)
@@ -137,7 +141,7 @@ def fix_pdf(ia_file):
     
 # Some basic checks to see if the URL in the list are (possibly) valid. wget rejects invalid URLs without crashing
 #   the program, so not strictly neccesary but does save some time.
-def check_url_list(url_list, valid=True, feedback=True):
+def check_url_list_minor(url_list, valid=True, feedback=True):
 
     legal_url_chars = list("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=")
     reserved_url_chars = list(":/#?&@%+~")
@@ -168,17 +172,306 @@ def check_url_list(url_list, valid=True, feedback=True):
                 checked_list.append(entry)
                 if feedback is True:
                     print("[--  -------  --] URL accepted: " + entry)
-
-
-
-    return url_list, valid
                     
-        
+    return url_list, valid
 
+
+def retrieve_from_upload_record(write_record, upload_record_txtfile, uploaded_files_list):
+    if write_record is True:
+        if os.path.exists(upload_record_txtfile) is True:
+            local_upload_record = open(upload_record_txtfile, "r")
+            for line in local_upload_record:
+                if line.strip("\n") not in uploaded_files_list:
+                    uploaded_files_list.append(line.strip("\n"))
+                elif line.strip("\n") in uploaded_files_list:
+                    pass
+                else:
+                    pass
+            local_upload_record.close()
+        elif os.path.exists(upload_record_txtfile) is False:
+            pass
+        else:
+            pass
+    else:
+         pass
+    return uploaded_files_list
+
+def write_to_upload_record(ia_file, upload_record_txtfile):
+        
+    openfile = open(upload_record_txtfile, "a")
+    try:
+        openfile.write(ia_file.split("/")[-1] + "\n")
+    except:
+        pass
+    openfile.close()
+    return
+
+def log_file_create():
+    log_n, log_break = 0, False
+    while log_break is False:
+        if log_n == 0:
+            if os.path.exists("wget-log"):
+                pass
+            else:
+                log_break = True
+        else:
+            if os.path.exists("wget-log." + str(log_n)):
+                pass
+            else:
+                log_break = True
+        log_n += 1
+    log_file = "wget-log." + str(log_n)
+    return log_file
+
+def call_ia_cli(confirm_uploads="n"):
+
+    if confirm_uploads == "n":
+        # calls the ia upload file, referencing the csv
+        ia_upload_command = 'ia upload --spreadsheet="ia_upload.csv" --sleep=30 --retries 10'
+        print('\n\n[--  -------  --] ' + ia_upload_command) # printed for user feedback
+        os.system(ia_upload_command)
+    elif confirm_uploads != "n":
+        if input("[--   Input   --] Upload to IA? [Y/N]: ").lower()[0] == "y":
+            print('\n\n' + ia_upload_command) # printed for user feedback
+            os.system(ia_upload_command)
+        else:
+            print("[!?  Warning  ?!] File upload to ia skipped")
+    else:
+        print("[!!  Warning  !!] call_ia_cli Error. File upload to ia skipped")
+
+    return
+
+def call_wget(wget2, url, filetype, user_agent, quotastring, log_file=""):
+    if wget2 is False:
+        # https://unix.stackexchange.com/a/128476
+        wget_command = "wget " + url + " -r -l --level=inf -p -A " + filetype + " -H -nc -nv --user-agent=\"" + user_agent + "\" -e --robots=off --restrict-file-names=ascii --quota=" + quotastring + " --wait=1 --random-wait --tries=2 --timeout=10 2>&1 | tee -a wget-log"
+        print("\n[--  -------  --] " + wget_command + "\n")
+        os.system(wget_command)
+    elif wget2 is True:
+        wget2_command = "wget2 " + url + " -A " + filetype + " --quota=" + quotastring + " --user-agent=\"" + user_agent + "\" --max-threads=20 -r -l 0 --span-hosts=on --restrict-file-names=ascii --robots=off --wait=0.5 --random-wait --tries=2 --timeout=10 --retry-connrefused --quiet=on"
+        print("\n[--  -------  --] " + wget2_command + "\n")
+        os.system(wget2_command)
+    else:
+        pass
+
+    return
+
+
+def find_files(files=[], ignore_folder="uploaded_PDFs"):
+    for (dirpath, dirnames, filenames_list) in os.walk(mypath):
+        if ignore_folder in dirpath:
+            pass
+        else:
+            for individual_file in filenames_list:
+                files.append(os.path.join(dirpath, individual_file))
+    return files
+
+def create_ia_csv(files, write_record, uploaded_files_list, ia_csv="ia_upload.csv"):
+    if os.path.exists(ia_csv):
+        os.remove(ia_csv)
+    output_csv = open(ia_csv, "x", encoding="utf8")
+
+    
+    # Add the basic headers required by ia
+    archive_setup = output_csv.write("identifier,title,contributor,mediatype,file")
+
+    # Transfer "files" list to the csv with some mild formatting
+    lines = 0 
+    for item in files:
+        # Only accept the wated filetype files, in case any others have crept in!
+        if item.endswith(filetype):
+            exists = True
+            ia_file = item.replace(mypath +"/", "")
+            # ia_file is the path to file needed for the uploader
+            # Title simply removes underscores and extention for easy readability
+            # Identifier is generated from the file name, just removing the extension and disallowed characters per def
+            if os.path.exists(item) is False:
+                exists = False
+            
+            if ia_file == ".pdf":
+                exists = False
+        
+            if os.path.exists(item) is True:
+                # reads the uploaded files record and adds missing records to the list
+                uploaded_files_list = retrieve_from_upload_record(write_record, upload_record_txtfile, uploaded_files_list)
+
+                if item not in uploaded_files_list:
+                    title = item.split("/")[-1].replace("_", " ").replace(".pdf", "").replace("-", " ") 
+                    identifier = identifier_formatting(item.split("/")[-1].replace(".pdf", ""))
+                    ia_file = fix_pdf(ia_file)
+                    uploaded_files_list.append(ia_file)
+                    # writes all the above to the csv (if the file existsn and hasn't already been uploaded)
+                    output_csv.write("\n" + identifier + "," + '"' + title + '"' + "," + contributor + "," + mediatype +  "," + '"' + ia_file + '"')
+
+                    if write_record is True:
+                        write_to_upload_record(ia_file, upload_record_txtfile)
+                    elif write_record is False:
+                        pass
+                    else:
+                        print("[!!   Error   !!] Write Record Error.")
+                        break
+                    
+                elif item in uploaded_files:
+                    print("[!?  Warning  ?!] File already uploaded, skipping: " + ia_file)
+                else:
+                    print("[!!   Error   !!] File already uploaded? Skipping: " + ia_file)
+            else:
+                pass
+
+    output_csv.close()
+
+    return
+
+def cleanup_def(total_moved, total_delete, clean_up="n", upload_dir="uploaded_PDFs", ia_file="ia_upload.csv", mypath=os.getcwd()):
+
+    all_files = find_files()
+    pdf_files = []
+    for item in files:
+        if item.endswith(".pdf") is True:
+            pdf_files.append(item)
+        else:
+            pass
+
+    skipped_header = False
+    if clean_up == "y":
+        print("\n[--  -------  --] Moving PDFs to seperate file for personal archiving.")
+
+        # Sees if a file already exists, otherwise tries to create on in the script directory
+        if os.path.isdir("uploaded_PDFs") is False:
+            try:
+                os.mkdir("uploaded_PDFs")
+            except:
+                pass
+            finally:
+                print("[--  -------  --] Created directory at /uploaded_PDFs")
+       
+        moved_count, delete_count = 0, 0
+        
+        for line in pdf_files:
+            if skipped_header is True:
+                try:
+                    # Tries to move a file to the new directory. If it can't (probably because
+                    #       it already exists, then simply deletes it when it throws an error.
+                    shutil.move(line, "./uploaded_PDFs/")
+                    moved_count += 1
+                except FileNotFoundError:
+                    try:
+                        print("[!!   Error   !!] FileNotFoundError in Cleanup Process: " + line)
+                        os.remove(line)
+                        delete_count += 1
+                    except:
+                        pass
+                except:     # Quick fix for a broad range of possible errors..
+                    try:
+                        os.remove(line)
+                        delete_count += 1
+                    except:
+                        pass
+                else:
+                    pass
+            else:
+                # Once the first csv line has processed, set skipped_header to True to
+                #   permit the rest to process as normal. Otherwise an error is thrown
+                #   when the file column returns "file" and not a file path!
+                skipped_header = True       
+
+        # Deletes empty folders
+        drop_empty_folders(mypath)
+
+        # User feedback
+        total_moved += moved_count
+        total_delete += delete_count
+        print("\n[--  -------  --] File move complete. Files moved: " + str(moved_count) + "    [Running Total: " + str(total_moved) + "]")
+        print("[--  -------  --] File deletion complete. Files deleted: " + str(delete_count) + "    [Running Total: " + str(total_delete) + "]")
+        print("[--  -------  --] Empty files deleted")
+
+        
+    elif clean_up == "n":
+        print("[!?  Warning  ?!] No post-archiving clean up performed.\n")
+    else:
+        print("\n[!!   Error   !!] Cleaning up error. !!")
+
+    return total_moved, total_delete
+
+def new_url_list(mypath):
+
+    log_count, url_total = 0, 0
+    more_logs, first_overwrite = True, True
+    
+    while more_logs is True:
+        log_file_name = "wget-log"  # Normal log file name. Might be different if wget above edited
+        if log_count > 0:
+            log_file_name += "." + str(log_count)   # wget appends additional logfiles as ".n"
+        else:
+            pass
+
+        if os.path.exists(mypath + "/" + log_file_name) is True:    # checks file exists in current directory
+            print("[!?  Warning  ?!] Reading " + log_file_name )                  # user feedback
+            log_file = open(log_file_name).read()                   # opens and reads logfile to log_file str       
+           # log_file = log_file.read()
+            # https://stackoverflow.com/a/50790119
+            urls_from_log_file = re.findall(r"\b((?:https?://)?(?:(?:www\.)?(?:[\da-z\.-]+)\.(?:[a-z]{2,6})|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(?::[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(?:ffff(?::0{1,4}){0,1}:){0,1}(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])|(?:[0-9a-fA-F]{1,4}:){1,4}:(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])))(?::[0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])?(?:/[\w\.-]*)*/?)\b",log_file)
+
+            # Only overwrite an old file (the first one it calls.)
+            #   If it has already been overwritte, then append
+            if first_overwrite is True:
+                new_url_list = open("url_file.txt", "w")
+                first_overwrite = False
+            else:
+                new_url_list = open("url_file.txt", "a")
+                
+            # Injects URLs to search based on a random selection from the
+            #   log files (to try and incrasse variety)
+            #   URL total limits the total number of URLs per file to
+            #   whatever the user chooses. URLs are checked to ensure they are
+            #   not index pages or temp files, as the regex above likes to
+            #   spit these out as geniune URLS. Once excluded, add to the total
+            #   count and then write the file on a new line. Print for user.
+            for url in urls_from_log_file:
+                random_num = random.randint(0, 99)
+                if random_num > 97 and url_total < 256:
+                    if url.endswith(".tmp") is False and url != "index.html":
+                        url_total += 1
+                        new_url_list.write(url + "\n")
+                        print("[--  -------  --] URL injected: " + url + "\\n")
+                else:
+                    pass
+
+            new_url_list.close()
+            
+        else:
+            # Once the final numbered log has been used, set flag to False to prevent
+            #   it kicking up an error about it not exisiting.
+            more_logs = False
+            
+        log_count += 1
+
+    return
+
+def check_url_list_major(url_list):
+    url_list, valid_check = check_url_list_minor(url_list)
+    get_url = False
+    while get_url is False:
+        if len(url_list) == 0 or valid_check is False:
+            url_list = []                                                   # Overwrites
+            url_list.append(input("No valid URL provided. Enter URL: "))    # Catches input and adds to list
+            url_list, valid_check = check_url_list_minor(url_list)                # Recheckes list
+            if len(url_list) != 0 and valid_check is True:                  # Double check (valid_check is really only needed)
+                get_url is True                                             # If acceptable, switches flag and allows escape
+            else:                                       
+                print("[!!   Error   !!] Error with entry. Please try again.")                # Else feedsback and sends the loop around again.
+        else:
+            break                                                           # Allows escape if something strange happens
+
+    return url_list
 
 
 # Initialize vars
 total_moved, total_delete = 0, 0
+wget2 = False
+uploaded_files_list = []
+write_record = True
+upload_record_txtfile = "upload_record.txt"
 
 # Infinite loop!          
 while True:
@@ -201,8 +494,7 @@ while True:
             else:
                 
                 config_line = line.split("=")
-                key_name, key_value = config_line[0].lower(), config_line[-1].lower()
-                #   (in config file:)   key_name    =   key_value 
+                key_name, key_value, key_value_raw = config_line[0].lower(), config_line[-1].lower(), config_line[-1]              #   (in config file:)   key_name    =   key_value 
 
                 if key_name.startswith("startpage"):
                     single_url = multi_str_strip(key_value)
@@ -254,14 +546,39 @@ while True:
                 elif key_name.startswith("mediatype"):
                     mediatype = multi_str_strip(key_value)
 
+                elif key_name.startswith("wget2"):
+                    if multi_str_strip(key_value.lower()).startswith("true") is True:
+                        wget2 = True
+                    else:
+                        wget2 = False
+
+                elif key_name.startswith("user-agent"):
+                    user_agent = multi_str_strip(key_value_raw).lstrip('"').rstrip('"')
+                 
+                elif key_name.startswith("local upload record"):
+                    if multi_str_strip(key_value.lower()).startswith("true") is True:
+                        write_record = True
+                    else:
+                        write_record = False
+
+                elif key_name.startswith("upload record file)"):
+                    if write_record is False:
+                        pass
+                    else:
+                        if multi_str_strip(key_value.lower()).endswith(".txt") is True:
+                            upload_record_txtfile = multi_str_strip(key_value)
+                        else:
+                            print("Defined upload record file is not of required type (.txt). Defaulting to upload_record.txt")
+                            upload_record_txtfile = "upload_record.txt"
+
         config_file.close()
 
     # If there is no config file, or default flag is set, sets the defults as in the subroutine.
     elif os.path.exists("MRS-PDFbot.config") is False or  defaulted is True:
-        confirm_uploads, clean_up, contributor, quotastring, startpage, uploaded_pdfs_folder, defaulted = no_config_defaults()
+        confirm_uploads, clean_up, contributor, quotastring, startpage, write_record, uploaded_pdfs_folder, wget2, user_agent, defaulted = no_config_defaults()
 
     # User feedback, seperated into subroutine for readability      
-    loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, filetype_upper, mediatype, uploaded_pdfs_folder)
+    loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, filetype_upper, mediatype, write_record, upload_record_txtfile, uploaded_pdfs_folder, wget2, user_agent)
 
     # ------------------------------------------------------------------------------
     # URL checking.
@@ -270,34 +587,16 @@ while True:
     #   it is flagged as true and allows the program to continue.
     # ------------------------------------------------------------------------------
 
-
-    url_list, valid_check = check_url_list(url_list)
-    get_url = False
-    while get_url is False:
-        if len(url_list) == 0 or valid_check is False:
-            url_list = []                                                   # Overwrites
-            url_list.append(input("No valid URL provided. Enter URL: "))    # Catches input and adds to list
-            url_list, valid_check = check_url_list(url_list)                # Recheckes list
-            if len(url_list) != 0 and valid_check is True:                  # Double check (valid_check is really only needed)
-                get_url is True                                             # If acceptable, switches flag and allows escape
-            else:                                       
-                print("[!!   Error   !!] Error with entry. Please try again.")                # Else feedsback and sends the loop around again.
-        else:
-            break                                                           # Allows escape if something strange happens
-        
+    url_list = check_url_list_major(url_list)
     # ------------------------------------------------------------------------------
     # Create wget string from variables, before printing (in case of errors) and
     #   then run via os
     # ------------------------------------------------------------------------------
     for url in url_list:
+        log_file = log_file_create()
+
+        call_wget(wget2, url, filetype, user_agent, quotastring, log_file)
         
-        # https://unix.stackexchange.com/a/128476
-        wget_command = "wget " + url + " -r -l --level=inf -p -A " + filetype + " -H -nc -nv --user-agent=\"\" -e --robots=off --restrict-file-names=ascii --quota=" + quotastring + " --wait=1 --random-wait --tries=2 --timeout=10 2>&1 | tee -a wget-log"
-        print("\n[--  -------  --] " + wget_command + "\n")
-        os.system(wget_command)
-
-
-
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # CREATING FILE FOR BULK UPLOAD TO ARCHIVE.ORG VIA ia upload COMMAND
@@ -305,80 +604,16 @@ while True:
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
-        # Create empty csv file to create metadata and file list. Deletes any existing
-        #   file to overwrite
-        if os.path.exists("ia_upload.csv"):
-          os.remove("ia_upload.csv")
-        output_csv = open("ia_upload.csv", "x")
-
-
-        # Add the basic headers required by ia
-        archive_setup = output_csv.write("identifier,title,contributor,mediatype,file")
-
-
 
         # Find each pdf file, and create a list of file paths with os.walk
-        files, ignore_list = [], ["uploaded_PDFs"]
-        for (dirpath, dirnames, filenames_list) in os.walk(mypath):
-            
-            if "uploaded_PDFs" in dirpath:
-                pass
-            else:
-                for individual_file in filenames_list:
-                    files.append(os.path.join(dirpath, individual_file))
-            # break
-
-        # Transfer "files" list to the csv with some mild formatting
-        lines = 0 
-        for item in files:
-            # Only accept the wated filetype files, in case any others have crept in!
-            if item.endswith(filetype):
-                exists = True
-                ia_file = item.replace(mypath +"/", "")
-                # ia_file is the path to file needed for the uploader
-                # Title simply removes underscores and extention for easy readability
-                # Identifier is generated from the file name, just removing the extension and disallowed characters per def
-                if os.path.exists(item) is False:
-                    exists = False
-                
-                if ia_file == ".pdf":
-                    exists = False
-            
-                if os.path.exists(item) is True:
-                    title = item.split("/")[-1].replace("_", " ").replace(".pdf", "").replace("-", " ") 
-                    
-                    identifier = identifier_formatting(item.split("/")[-1].replace(".pdf", ""))
-
-                    ia_file = fix_pdf(ia_file)
-                    # writes all the above to the csv (if the file exists)
-                    output_csv.write("\n")
-                    output_csv.write(identifier + "," + title + "," + contributor + "," + mediatype + "," + ia_file)
-                else:
-                    pass
-
-        output_csv.close()
-
-
+        files = find_files()
+        create_ia_csv(files, write_record, uploaded_files_list)
         # ------------------------------------------------------------------------------
         # Once the csv is created, we ask for confirmation of the uploads to archive.org
         #   (qeury disabled by default in config). Then we call the basic ia command for
-        #   bulk uploads. Inter-upload sleep set from default (30sc) to 0sc.
+        #   bulk uploads. 
         # ------------------------------------------------------------------------------
-
-        if confirm_uploads == "n":
-            # calls the ia upload file, referencing the csv
-            ia_upload_command = 'ia upload --spreadsheet="ia_upload.csv" --sleep=1 --retries 10'
-            print('\n\n' + ia_upload_command) # printed for user feedback
-            os.system(ia_upload_command)
-        elif confirm_uploads != "n":
-            if input("[--   Input   --] Upload to IA? [Y/N]: ").lower()[0] == "y":
-                print('\n\n[--  -------  --]' + ia_upload_command) # printed for user feedback
-                os.system(ia_upload_command)
-            else:
-                print("[!?  Warning  ?!] File upload to ia skipped")
-        else:
-            print("[!?  Warning  ?!] File upload to ia skipped")
-
+        call_ia_cli(confirm_uploads)
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -391,76 +626,8 @@ while True:
 #   folder even if they've not been uploaded.
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
-
-        skipped_header = False
-        if clean_up == "y":
-            print("\n[--  -------  --] Moving PDFs to seperate file for personal archiving.")
-
-            # Sees if a file already exists, otherwise tries to create on in the script directory
-            if os.path.isdir("uploaded_PDFs") is False:
-                try:
-                    os.mkdir("uploaded_PDFs")
-                except:
-                    pass
-                finally:
-                    print("[--  -------  --] Created directory at /uploaded_PDFs")
-            
-            ia_file = open("ia_upload.csv", "r")
-            ia_file_list = []
-            moved_count, delete_count = 0, 0
-            
-            for line in ia_file:
-                if skipped_header is True:
-                    ia_filename = multi_str_strip(line.split(",")[-1])
-                    try:
-                        # Tries to move a file to the new directory. If it can't (probably because
-                        #       it already exists, then simply deletes it when it throws an error.
-                        shutil.move(ia_filename, "./uploaded_PDFs/")
-                        moved_count += 1
-                    except FileNotFoundError:
-                        try:
-                            print("[!!   Error   !!] FileNotFoundError in Cleanup Process: " + ia_filename)
-                            os.remove(ia_filename)
-                            delete_count += 1
-                        except:
-                            pass
-                    except:     # Quick fix for a broad range of possible errors..
-                        try:
-                            os.remove(ia_filename)
-                            delete_count += 1
-                        except:
-                            pass
-                    else:
-                        pass
-                else:
-                    # Once the first csv line has processed, set skipped_header to True to
-                    #   permit the rest to process as normal. Otherwise an error is thrown
-                    #   when the file column returns "file" and not a file path!
-                    skipped_header = True       
-
-            # Deletes empty folders
-            drop_empty_folders(mypath)
-
-            # User feedback
-            total_moved += moved_count
-            total_delete += delete_count
-            print("[--  -------  --] File move complete. Files moved: " + str(moved_count) + "    [Running Total: " + str(total_moved) + "]")
-            print("[--  -------  --] File deletion complete. Files deleted: " + str(delete_count) + "    [Running Total: " + str(total_delete) + "]")
-            print("[--  -------  --] Empty files deleted")
-                  
-        elif clean_up == "n":
-            print("[!?  Warning  ?!] No post-archiving clean up performed.\n")
-        else:
-            print("\n[!!   Error   !!] Cleaning up error. !!")
-
-        ia_file.close()                 # Finishes cleaning up by closing the csv file and then deleting it
-        try:
-            os.rmdir(ia_upload.csv)         # (same command occurs earlier in an 'if', but it here makes certain it's gone)
-        except NameError:                   # essentially "it already exists (as predicted)
-            pass
-        except:                             # any other error that might occur unexpectedly
-            print("[!?  Warning  ?!] Possible error deleting ia_upload.csv).")
-            pass
+        total_moved, total_delete = cleanup_def(total_moved, total_delete, clean_up)
+     
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # CREATES A NEW URL LIST FROM PREVIOUSLY CHECKED URLS LISTED IN THE LOGFILES
@@ -476,66 +643,9 @@ while True:
 #   TO DO: Exclude early links!
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
-   
-   
-    log_count, url_total = 0, 0
-    more_logs, first_overwrite = True, True
-    
-    while more_logs is True:
-        log_file_name = "wget-log"  # Normal log file name. Might be different if wget above edited
-        if log_count > 0:
-            log_file_name += "." + str(log_count)   # wget appends additional logfiles as ".n"
-        else:
-            pass
+    new_url_list(mypath)
 
-        if os.path.exists(mypath + "/" + log_file_name) is True:    # checks file exists in current directory
-            print("[!?  Warning  ?!] Reading " + log_file_name )                  # user feedback
-            log_file = open(log_file_name).read()                   # opens and reads logfile to log_file str       
-           # log_file = log_file.read()
-            # https://stackoverflow.com/a/50790119
-            urls_from_log_file = re.findall(r"\b((?:https?://)?(?:(?:www\.)?(?:[\da-z\.-]+)\.(?:[a-z]{2,6})|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|(?:(?:[0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(?:(?::[0-9a-fA-F]{1,4}){1,6})|:(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(?::[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(?:ffff(?::0{1,4}){0,1}:){0,1}(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])|(?:[0-9a-fA-F]{1,4}:){1,4}:(?:(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(?:25[0-5]|(?:2[0-4]|1{0,1}[0-9]){0,1}[0-9])))(?::[0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])?(?:/[\w\.-]*)*/?)\b",log_file)
-
-
-            # Only overwrite an old file (the first one it calls.)
-            #   If it has already been overwritte, then append
-            if first_overwrite is True:
-                new_url_list = open("url_file.txt", "w")
-                first_overwrite = False
-            else:
-                new_url_list = open("url_file.txt", "a")
-                
-
-            # Injects URLs to search based on a random selection from the
-            #   log files (to try and incrasse variety)
-            #   URL total limits the total number of URLs per file to
-            #   whatever the user chooses. URLs are checked to ensure they are
-            #   not index pages or temp files, as the regex above likes to
-            #   spit these out as geniune URLS. Once excluded, add to the total
-            #   count and then write the file on a new line. Print for user.
-            for url in urls_from_log_file:
-                random_num = random.randint(0, 99)
-                if random_num > 97 and url_total < 256:
-                    if url.endswith(".tmp") is False and url != "index.html":
-                        url_total += 1
-                        new_url_list.write(url + "\n")
-                        print("URL injected: " + url + "\\n")
-                else:
-                    pass
-
-            new_url_list.close()
-            
-        else:
-            # Once the final numbered log has been used, set flag to False to prevent
-            #   it kicking up an error about it not exisiting.
-            more_logs = False
-            
-        log_count += 1
-
+    break
     # At this point, the file starts again with the new url list!
 
         
-    
-
-
-
-
