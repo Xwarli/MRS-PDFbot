@@ -287,19 +287,20 @@ def find_files(files=[], ignore_folder="uploaded_PDFs", mypath=os.getcwd()):
 #   to use for bulk uploads. This section creates said file, and forms the
 #   basis for many of the other modules
 # -----------------------------------------------------------------------------
-def create_ia_csv(files, write_record, filetype, filetype_upper, uploaded_files_list, ia_csv="ia_upload.csv"):
+def create_ia_csv(contributor, mediatype, files, write_record, filetype, filetype_upper, upload_record_txtfile, uploaded_files_list=[], ia_csv="ia_upload.csv", mypath=os.getcwd()):
+    filetype = multi_str_strip(filetype).lower()
     if os.path.exists(ia_csv):      # checks if a ia file already exists
         os.remove(ia_csv)           #   if so.. deletes it to prevent conflict
     output_csv = open(ia_csv, "x", encoding="utf8")     # create new csv; encode to utf8 to help stop identifier errors
     
     # Add the basic headers required by ia
     archive_setup = output_csv.write("identifier,title,contributor,mediatype,file")
-
     # Transfer "files" list to the csv with some mild formatting
-    lines = 0   # counter
     for item in files:
         # Only accept the wanted filetype files, in case any others have crept in!
-        if item.endswith(filetype):
+        item = multi_str_strip(item).lower()
+        if item.endswith(filetype) is True:
+            print(item + "---")
             exists = True   # assume the file does exist (although we will check!)
             ia_file = item.replace(mypath +"/", "") # ia_file is the FULL path - relative to script dir - to file needed for the uploader
             if os.path.exists(item) is False:       # if the item DOES NOT EXIST
@@ -330,8 +331,8 @@ def create_ia_csv(files, write_record, filetype, filetype_upper, uploaded_files_
                     print("[!?  Warning  ?!] File already uploaded, skipping: " + ia_file)
                 else:                                                           # if something strange has happened....
                     print("[!!   Error   !!] File already uploaded? Skipping: " + ia_file)
-            else:   # passes the file if the exists flag is False
-                pass
+        else:   # passes the file if the exists flag is False
+            pass
     output_csv.close()
     return
 
@@ -412,6 +413,7 @@ def cleanup_def(total_moved, total_delete, clean_up="n", upload_dir="uploaded_PD
 #   obvious duplicates
 #------------------------------------------------------------------------------
 def url_filter(url_string, reject_urls=False, reject_list="reject-list.txt", domain_list=[], reject_domains=[], mypath=os.getcwd()):
+    invalid_suffix = ["jpeg","jpg","png","tif","gif","tiff", "pdf"]
     if reject_urls is True:
         load_file = open(os.path.join(mypath, reject_list), "r")
         for line in load_file:
@@ -421,13 +423,15 @@ def url_filter(url_string, reject_urls=False, reject_list="reject-list.txt", dom
     else:
         pass
 
-    for url in url_string:                      # For every URL pass to the routine
+    for url in url_string:                      # For every URL past to the routine
         url = url.lstrip("http://").lstrip("https://").lstrip("www.") # strip prefixes
         domain = url.split("/")[0]              # split at / and read the domain name
         if domain in domain_list or domain in reject_domains:               # if it is already in our list, reject
             pass
         elif domain not in domain_list and domain not in reject_domains:         # if it is new to us, add to our list
-            domain_list.append(domain)
+            if domain.endswith(tuple(invalid_suffix)) is False and domain.startswith("-") is False:                 # check it's not a file (does occur)
+                if "." in domain:                               # check that it's a URL, not just a plain string
+                    domain_list.append(domain)
         else:
             pass
     return domain_list                          # return the list for further processing
@@ -550,6 +554,9 @@ def check_url_list(reject_urls, reject_list, url_list=[], valid=True, feedback=T
                 if feedback is True:        # if feedback is required, then print
                     print("[--  -------  --] URL accepted: " + entry)    
     checked_list = url_filter(checked_list, reject_urls, reject_list)
+    for entry in checked_list:
+        if feedback is True:        # if feedback is required, then print
+                print("[--  -------  --] URL accepted: " + entry)    
     return checked_list, len(url_list) + 1
 
 # ------------------------------------------------------------------------------
@@ -671,7 +678,7 @@ def main():
                 log_file = log_file_create()                                                # create log file
                 call_wget(wget2, url, filetype, user_agent, quotastring, log_file)          # Call wget/2 web search
                 files = find_files()                                                        # find all the files downloaded
-                create_ia_csv(files, filetype, filetype_upper, write_record, upload_record_txtfile)                   # create spreadsheet for ia
+                create_ia_csv(contributor, mediatype, files, write_record, filetype, filetype_upper, upload_record_txtfile)
                 call_ia_cli(confirm_uploads)                                                # call ia cli to upload
                 print("\n[--  -------  --] URLs processed: " + str(processed) + " | To-do: " + str(total_urls - processed) )
                 
@@ -680,6 +687,3 @@ def main():
             new_url_list(mypath, reject_urls, reject_list)
 
 main()
-
-
-        
