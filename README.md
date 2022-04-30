@@ -8,24 +8,26 @@ Written by Marley Sexton – a very amateur programmer (so forgive obvious error
 
 --- OVERVIEW ---
 
-Using wget, this script can start with either a single website or a url_list (as defined in the config files) to run an endless search for PDFs.
+Using wget or wget2, this script can start with either a single website or a url_list (as defined in the config files) to run an endless search for PDFs.
 
 Wget is limited per starting line via a transfer quota, and once finished it then creates a spreadsheet for use with the IA bulk uploader.
 
 Once uploaded, it then cleans up by moving PDFs to a separate local folder and deletes any empty directories. It then works with the next URL in the provided list.
 
-Finally, using the wget log MRS-PDFbot finds a list of previously visited URLs, and writes a random number to a new URL_list file.
+Finally, using the wget logs MRS-PDFbot finds a list of previously visited URLs, filters to remove duplicates and those on the reject list, and writes a random number of them to a new URL_list file.
+
 The program then loops back to the beginning and starts working through the new url list.
 
+Set and forget!
 
 
 --- PREREQUISITES --
 
-++  Python 3.x
+++ Python 3.x
 
-++ Internet Archive CLI (https://github.com/jjjake/internetarchive)
+++ Internet Archive CLI (https://github.com/jjjake/internetarchive) configured for uploads via CLI
 
-++ wget (https://www.gnu.org/software/wget/)
+++ wget (https://www.gnu.org/software/wget/) or wget2 (https://gnuwget.gitlab.io/wget2/wget2-latest.tar.gz)
 
 ++ PDFtk (https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/ -- use this later version not easily found on their webpage: https://gist.github.com/seignovert/45b5dbcb14335f1b94d221aa9b98cbab )
 
