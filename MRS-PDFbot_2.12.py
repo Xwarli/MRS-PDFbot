@@ -439,7 +439,7 @@ def fix_pdf(ia_file, count, filetype=".pdf", my_path=os.getcwd()):
         try:                        # tries. If exception occurs it still returns the original, unchanged file
             cmd.pdftk(ia_file, new_file, count)                     # Runs the PDFtk command and outputs to file-tmp.pdf (input != output)
             if os.path.exists(new_file) is True: # only if new file exists, go ahead and delete the old
-                end_size = cmd.get_size_KB(ia_file)                 # calculates end size (i.e. new file size)
+                end_size = cmd.get_size_KB(new_file)                 # calculates end size (i.e. new file size)
                 absolute_change = -(start_size - end_size)          # calculates change in size
                 sum_vals[1] += end_size
                 sum_vals[2] += absolute_change
@@ -1063,4 +1063,4 @@ if __name__ == "__main__":
 
 
 
-    
+        
