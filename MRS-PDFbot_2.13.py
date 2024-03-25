@@ -430,35 +430,37 @@ def identifier_formatting(identifier): # Remove non-alphanumeric characters
 # FIX PDF
 #   Uses PDFtk as suggested by ia to fix potential errors and reduce size.
 # -----------------------------------------------------------------------------
-def fix_pdf(ia_file, count, filetype=".pdf", my_path=os.getcwd()):
-    if filetype == ".pdf":
-        sum_vals = [0, 0, 0]                                        # start, end, absolute size values
-        start_size = cmd.get_size_KB(ia_file)                       # calculate "before" size
-        sum_vals[0] += start_size                                   
-        new_file = ia_file.rstrip(filetype) + "-tmp" + filetype     # creates temp file for PDFtk b/c in != out
-        try:                        # tries. If exception occurs it still returns the original, unchanged file
-            cmd.pdftk(ia_file, new_file, count)                     # Runs the PDFtk command and outputs to file-tmp.pdf (input != output)
-            if os.path.exists(new_file) is True: # only if new file exists, go ahead and delete the old
-                end_size = cmd.get_size_KB(new_file)                 # calculates end size (i.e. new file size)
-                absolute_change = -(start_size - end_size)          # calculates change in size
-                sum_vals[1] += end_size
-                sum_vals[2] += absolute_change
-                percent_change = (100/start_size)*absolute_change   # calculates percentage change
-                start_size, end_size, percent_change = strcv.dp3(start_size), strcv.dp3(end_size), strcv.dp2(percent_change) # convert to 2 decimal places
-                if absolute_change > 0:
-                    ptt.error(start_size.rjust(10) + "KB --> " + end_size.rjust(10) + "KB (+" + strcv.dp3(absolute_change).rjust(6) + "KB, +" + percent_change.rjust(6) + "%)")
-                    cmd.remove_file(new_file)           # if file got larger, use the origignal by deleting new version
-                elif absolute_change < 0:
-                    ptt.alert(start_size.rjust(10) + "KB --> " + end_size.rjust(10) + "KB (" + strcv.dp3(absolute_change).rjust(6) + "KB, " + percent_change.rjust(6) + "%)")
-                    cmd.remove_file(ia_file)            # if file got smaller, deletes the old (input) file         
-                    os.rename(new_file, ia_file)        #  and renames the new (output) file to the original name (swaps them)
-                elif absolute_change == 0:
-                    ptt.yellow("[--  -------  --] " + start_size.rjust(10) + "KB --> " + end_size.rjust(10) + "KB (± 0.000KB, +  0.00%) [NO CHANGE]")
-                    cmd.remove_file(ia_file)            # if the file size did not change, delete the old file (may have still fixed syntax errors, etc.)        
-                    os.rename(new_file, ia_file)        #  and renames the new (output) file to the original name (swaps them)
-        except:                                            
-            pass  
-    return ia_file, sum_vals
+def fix_pdf(ia_file, count, use_pdftk, filetype=".pdf", my_path=os.getcwd()):
+	if use_pdftk == False:
+		return ia_file, 0
+	elif filetype == ".pdf":
+		sum_vals = [0, 0, 0]										# start, end, absolute size values
+		start_size = cmd.get_size_KB(ia_file)						# calculate "before" size
+		sum_vals[0] += start_size									
+		new_file = ia_file.rstrip(filetype) + "-tmp" + filetype		# creates temp file for PDFtk b/c in != out
+		try:						# tries. If exception occurs it still returns the original, unchanged file
+			cmd.pdftk(ia_file, new_file, count)						# Runs the PDFtk command and outputs to file-tmp.pdf (input != output)
+			if os.path.exists(new_file) is True: # only if new file exists, go ahead and delete the old
+				end_size = cmd.get_size_KB(new_file)				 # calculates end size (i.e. new file size)
+				absolute_change = -(start_size - end_size)			# calculates change in size
+				sum_vals[1] += end_size
+				sum_vals[2] += absolute_change
+				percent_change = (100/start_size)*absolute_change	# calculates percentage change
+				start_size, end_size, percent_change = strcv.dp3(start_size), strcv.dp3(end_size), strcv.dp2(percent_change) # convert to 2 decimal places
+				if absolute_change > 0:
+					ptt.error(start_size.rjust(10) + "KB --> " + end_size.rjust(10) + "KB (+" + strcv.dp3(absolute_change).rjust(6) + "KB, +" + percent_change.rjust(6) + "%)")
+					cmd.remove_file(new_file)			# if file got larger, use the origignal by deleting new version
+				elif absolute_change < 0:
+					ptt.alert(start_size.rjust(10) + "KB --> " + end_size.rjust(10) + "KB (" + strcv.dp3(absolute_change).rjust(6) + "KB, " + percent_change.rjust(6) + "%)")
+					cmd.remove_file(ia_file)			# if file got smaller, deletes the old (input) file			
+					os.rename(new_file, ia_file)		#  and renames the new (output) file to the original name (swaps them)
+				elif absolute_change == 0:
+					ptt.yellow("[--	 -------  --] " + start_size.rjust(10) + "KB --> " + end_size.rjust(10) + "KB (± 0.000KB, +	 0.00%) [NO CHANGE]")
+					cmd.remove_file(ia_file)			# if the file size did not change, delete the old file (may have still fixed syntax errors, etc.)		 
+					os.rename(new_file, ia_file)		#  and renames the new (output) file to the original name (swaps them)
+		except:											   
+			pass  
+	return ia_file, sum_vals
 
 # -----------------------------------------------------------------------------
 # FIND FILES (RELATIVE TO SCRIPT)
@@ -516,7 +518,7 @@ def call_wget(wget2, url, filetype, user_agent, quotastring, reject_list, log_fi
 #   to use for bulk uploads. This section creates said file, and forms the
 #   basis for many of the other modules
 # -----------------------------------------------------------------------------
-def create_ia_csv(contributor, mediatype, files, write_record, filetype, upload_record_txtfile, uploaded_files_list=[], ia_csv="ia_upload.csv", mypath=os.getcwd()):
+def create_ia_csv(contributor, mediatype, files, write_record, filetype, use_pdftk, upload_record_txtfile, uploaded_files_list=[], ia_csv="ia_upload.csv", mypath=os.getcwd()):
     filetype = "." + strcv.general(filetype).lower()
     cmd.check_and_remove(ia_csv)
     # create new csv; encode to utf8 to help stop identifier errors
@@ -550,7 +552,7 @@ def create_ia_csv(contributor, mediatype, files, write_record, filetype, upload_
                     
                     author, created_on = cmd.metadata_format(cmd.pdftk_meta(ia_file))
 
-                    ia_file, sum_vals_out  = fix_pdf(ia_file, count, filetype)  # "fixes" the pdf with brief compression and syntax corrections
+                    ia_file, sum_vals_out  = fix_pdf(ia_file, count, use_pdftk, filetype)  # "fixes" the pdf with brief compression and syntax corrections
                     try:    # in case of errors, tries to remove any residual tmp files created by fix_pdf()
                         cmd.remove_file(ia_file.rstrip(".pdf") + "-tmp.pdf")
                     except:
@@ -935,6 +937,7 @@ def read_config(file="MRS-PDFbot.config", url_file="", mypath=os.getcwd()):
     url_list = []
     bulk_uploads = False
     timeout_sc = 1800
+    use_pdftk = True
 
     if os.path.exists(os.path.join(mypath, "MRS-PDFbot.config")) is True:
         ptt.warning("Reading MRS-PDFbot.config")
@@ -1019,6 +1022,10 @@ def read_config(file="MRS-PDFbot.config", url_file="", mypath=os.getcwd()):
                 elif key_name.startswith("bulk_uploads"):
                     if key_value.startswith("true"):
                         bulk_uploads = True 
+                
+                elif key_name.startswith("use_pdftk"):
+                	if key_value.startswith("false"):
+                		use_pdftk = False
 
                 elif key_name.startswith("wget timeout"):
                     try:
@@ -1032,13 +1039,13 @@ def read_config(file="MRS-PDFbot.config", url_file="", mypath=os.getcwd()):
     if single_url == "" and len(url_list) == 0:
         url_list.append(input("!!! ---> Input start URL: "))
 
-    return single_url, url_file, quotastring, contributor, confirm_uploads, clean_up, uploaded_pdfs_folder, filetype, mediatype, wget2, user_agent, write_record, upload_record_txtfile, reject_urls, reject_list, url_list, bulk_uploads, timeout_sc
+    return single_url, url_file, quotastring, contributor, confirm_uploads, clean_up, uploaded_pdfs_folder, filetype, mediatype, wget2, user_agent, write_record, upload_record_txtfile, reject_urls, reject_list, url_list, bulk_uploads, use_pdftk, timeout_sc
 
 
 
 if __name__ == "__main__": 
         total_moved, total_delete = 0, 0
-        single_url, url_file, quotastring, contributor, confirm_uploads, clean_up, uploaded_pdfs_folder, filetype, mediatype, wget2, user_agent, write_record, upload_record_txtfile, reject_urls, reject_list, url_list, bulk_uploads, timeout_sc = read_config()
+        single_url, url_file, quotastring, contributor, confirm_uploads, clean_up, uploaded_pdfs_folder, filetype, mediatype, wget2, user_agent, write_record, upload_record_txtfile, reject_urls, reject_list, url_list, bulk_uploads, use_pdftk, timeout_sc = read_config()
         loading_feedback(quotastring, contributor, clean_up, confirm_uploads, filetype, mediatype, write_record, upload_record_txtfile, uploaded_pdfs_folder, wget2, user_agent, reject_urls, reject_list, url_list, bulk_uploads, timeout_sc)
 
         while True: 
@@ -1051,7 +1058,7 @@ if __name__ == "__main__":
 
             for url in url_list:
                 call_wget(wget2, url, filetype, user_agent, quotastring, reject_list, create.wget_log_file(), timeout_sc)          # Call wget/2 web search
-                count = create_ia_csv(contributor, mediatype, find_files(), write_record, filetype, upload_record_txtfile)
+                count = create_ia_csv(contributor, mediatype, find_files(), write_record, filetype, use_pdftk, upload_record_txtfile)
                 call_ia_cli(confirm_uploads, bulk_uploads, count)                                                # call ia cli to upload
                 processed += 1.                   # Tick up the total processed number
                 print("\n[--  -------  --] URLs processed: " + str(processed) + " | To-do: " + str(total_urls))
