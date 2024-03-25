@@ -105,10 +105,10 @@ class cmd:
         return author, created_on
 
     def wget(url, log_file, quotastring, user_agent, filetype):
-        return "wget " + url + " -o " + log_file + " -nv --tries=2 --retry-connrefused --timeout=10 --wait=0.5 --random-wait --quota=" + quotastring + " --user-agent=" + user_agent + " -r -l 0 -A " + filetype + " " + filetype.upper() + " -H -e --robots=off"
+        return "wget " + url + " -o " + log_file + " -nv --tries=2 --retry-connrefused --timeout=10 --wait=0.5 --random-wait --quota=" + quotastring + " --user-agent=" + user_agent + " -r -l 0 -A " + filetype + " --ignore-case -H -e --robots=off"
     
     def wget2(url, log_file, quotastring, user_agent, filetype):
-        return "wget2 " + url + " -r -l 0 --max-threads=20 -A ." + filetype + " ." + filetype.upper() + " --restrict-file-names=ascii --timeout=10 --wait=0.5 --random-wait --tries=2 --waitretry=5 --quota=" + quotastring + " --user-agent=" + user_agent + " --max-threads=20 --span-hosts=on --robots=off --retry-connrefused -o " + log_file
+        return "wget2 " + url + " -r -l 0 --max-threads=50 -A " + filetype + " --ignore-case --restrict-file-names=ascii --timeout=1 --wait=0.3 --random-wait --tries=2 --waitretry=5 --quota=" + quotastring + " --user-agent=" + user_agent + " --max-threads=20 --span-hosts=on -e robots=off --retry-connrefused -o " + log_file
     
 
     def raw_subprocess(command):
@@ -523,7 +523,7 @@ def create_ia_csv(contributor, mediatype, files, write_record, filetype, upload_
     output_csv = open(ia_csv, "x", encoding="utf8")
 
 
-    archive_setup = output_csv.write("identifier,title,contributor,mediatype,source,creator,date,file")
+    archive_setup = output_csv.write("identifier,title,contributor,mediatype,source,creator,date,collection,file")
     uploaded_files_list = cmd.retrieve_uprecord(upload_record_txtfile, uploaded_files_list)
     sum_vals = [0, 0, 0]
     count = 1
@@ -559,7 +559,7 @@ def create_ia_csv(contributor, mediatype, files, write_record, filetype, upload_
                     sum_vals += sum_vals_out
                     uploaded_files_list.append(ia_file)     # add the file to the uploaded file list
                    
-                    output_csv.write("\n" + identifier + "," + '"' + title + '",' + contributor + "," + mediatype + ',' + source_website + ',' + author + ',' + created_on + ',"' + ia_file +'"') # writes all the above to the csv (if the file existsn and hasn't already been uploaded)
+                    output_csv.write("\n" + identifier + "," + '"' + title + '",' + contributor + "," + mediatype + ',' + source_website + ',' + author + ',' + created_on + ', mrspdfbot,"' + ia_file +'"') # writes all the above to the csv (if the file existsn and hasn't already been uploaded)
 
                     count += 1
                     if write_record is True:                                    # if config asks to create a upload record
