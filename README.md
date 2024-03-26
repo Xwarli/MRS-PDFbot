@@ -23,6 +23,8 @@ Set and forget!
 
 --- PREREQUISITES --
 
+++ macOS
+
 ++ Python 3.x
 
 ++ Internet Archive CLI (https://github.com/jjjake/internetarchive) configured for uploads via CLI
